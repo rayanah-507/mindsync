@@ -50,7 +50,7 @@ The stress prediction methodology is grounded in established research on:
 
 ### Prerequisites
 - Python 3.8+  
-- Virtual environment (recommended)  
+- Virtual environment 
 
 ### Setup
 ```bash
