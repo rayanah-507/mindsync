@@ -216,13 +216,28 @@ def load_calendar_data(provider):
             # Initialize Google Calendar API
             google_cal = GoogleCalendarAPI()
             
+            # DEBUG: Check authentication status
+            st.write("🔍 DEBUG: Checking authentication...")
+            is_auth = google_cal.is_authenticated()
+            st.write(f"🔍 Is authenticated: {is_auth}")
+            
+            if 'google_credentials' in st.session_state:
+                st.write("🔍 Google credentials found in session")
+                st.write(f"🔍 Credentials: {st.session_state.google_credentials}")
+            else:
+                st.write("🔍 No Google credentials in session")
+            
             # Check if already authenticated
             if google_cal.is_authenticated():
                 st.info("✅ Already authenticated! Loading your calendar events...")
                 
-                # Fetch events directly
+                # DEBUG: Try to fetch events
+                st.write("🔍 Fetching events...")
                 events = google_cal.get_calendar_events()
+                st.write(f"🔍 Events returned: {events}")
+                
                 if events:
+                    st.write(f"🔍 Number of events: {len(events)}")
                     calendar_data = {"events": events}
                     st.session_state.calendar_data = calendar_data
                     
@@ -232,42 +247,18 @@ def load_calendar_data(provider):
                     st.session_state.parsed_events = parsed_events
                     
                     st.success(f"✅ Successfully loaded {len(events)} events from Google Calendar!")
-                    # Don't call st.rerun() here, let the main flow handle it
                     return
                 else:
-                    st.error("❌ Failed to fetch calendar events")
+                    st.error("❌ No events returned or failed to fetch")
                     return
             else:
-                # Not authenticated - show auth URL
-                auth_url = google_cal.get_auth_url()
-                if auth_url:
-                    st.info("🔄 Click the link below to connect your Google Calendar:")
-                    st.markdown(f"**[🔗 Connect Google Calendar]({auth_url})**")
-                    st.markdown("You will be redirected back to this app after authorization.")
-                    st.stop()
-                else:
-                    st.error("❌ Failed to generate authentication URL")
-                    st.stop()
+                st.error("❌ Not authenticated")
+                return
                     
         except Exception as e:
-            st.error(f"❌ Error setting up Google Calendar: {str(e)}")
-            # Fallback to sample data
-            st.info("Loading sample data as fallback...")
-            
-            try:
-                with open("data/sample_calendars/google_sample.json", 'r') as f:
-                    calendar_data = json.load(f)
-            except FileNotFoundError:
-                with open("data/sample_calendars/mixed_day.json", 'r') as f:
-                    calendar_data = json.load(f)
-            
-            st.session_state.calendar_data = calendar_data
-            parser = CalendarParser()
-            events = parser.parse_calendar(calendar_data)
-            st.session_state.parsed_events = events
-            
-            st.success(f"✅ Loaded sample data with {len(events)} events!")
-            return
+            st.error(f"❌ Error: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
             
     elif provider == "outlook":
         # Outlook logic stays the same
