@@ -99,7 +99,7 @@ def handle_oauth_callback():
 def main():
     # Handle OAuth callback first
     query_params = st.query_params
-    if 'code' in query_params and 'state' in query_params:
+    if 'code' in query_params:
         handle_oauth_callback()
         return
     
@@ -188,6 +188,23 @@ def handle_signup(username, password, confirm_password):
 
 def show_calendar_provider_selection():
     """Display calendar provider selection page"""
+    
+    # DEBUG/RESET SECTION
+    st.write("🔍 Current session state:")
+    st.write(f"calendar_provider: {st.session_state.get('calendar_provider')}")
+    st.write(f"google_credentials: {'Yes' if 'google_credentials' in st.session_state else 'No'}")
+    
+    # Reset button for debugging
+    if st.button("🔄 Reset Session"):
+        st.session_state.calendar_provider = None
+        st.session_state.calendar_data = None
+        st.session_state.parsed_events = []
+        if 'google_credentials' in st.session_state:
+            del st.session_state.google_credentials
+        st.rerun()
+    
+    st.markdown("---")
+    
     st.title(f"👋 Welcome, {st.session_state.username}!")
     st.subheader("🗓️ Connect Your Calendar")
     
@@ -200,11 +217,7 @@ def show_calendar_provider_selection():
         
         # Google Calendar option
         if st.button("📅 Google Calendar", use_container_width=True, help="Connect with Google Calendar"):
-            # Set the provider and load data
-            st.session_state.calendar_provider = "google"
             load_calendar_data("google")
-            # Force rerun to show main app
-            st.rerun()
         
         st.markdown("<br>", unsafe_allow_html=True)
         
@@ -259,15 +272,25 @@ def load_calendar_data(provider):
                     parser = CalendarParser()
                     parsed_events = parser.parse_google_calendar_events(events)
                     st.session_state.parsed_events = parsed_events
+                    st.session_state.calendar_provider = "google"
                     
                     st.success(f"✅ Successfully loaded {len(events)} events from Google Calendar!")
-                    return
+                    st.rerun()
                 else:
                     st.error("❌ No events returned or failed to fetch")
                     return
             else:
-                st.error("❌ Not authenticated")
-                return
+                # Not authenticated - show auth URL
+                st.write("🔍 Not authenticated, generating auth URL...")
+                auth_url = google_cal.get_auth_url()
+                if auth_url:
+                    st.info("🔄 Click the link below to connect your Google Calendar:")
+                    st.markdown(f"**[🔗 Connect Google Calendar]({auth_url})**")
+                    st.markdown("You will be redirected back to this app after authorization.")
+                    st.stop()
+                else:
+                    st.error("❌ Failed to generate authentication URL")
+                    st.stop()
                     
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
@@ -333,8 +356,10 @@ def show_main_app():
                     st.session_state.calendar_data = None
                     st.session_state.parsed_events = []
                     st.rerun()
+            else:
+                st.sidebar.markdown("❌ **Google Calendar Not Connected**")
         except:
-            pass
+            st.sidebar.markdown("❌ **Google Calendar Not Connected**")
     
     st.sidebar.markdown("---")
     
@@ -374,9 +399,8 @@ def show_main_app():
 def dashboard_page():
     """Main dashboard with overview"""
     st.header("📊 Dashboard Overview")
-
-
-        # ADD THIS DEBUGGING SECTION
+    
+    # DEBUG INFO
     st.write("🔍 DEBUG INFO:")
     st.write(f"parsed_events in session: {len(st.session_state.parsed_events) if st.session_state.parsed_events else 'None'}")
     st.write(f"calendar_data in session: {st.session_state.calendar_data}")
@@ -388,7 +412,6 @@ def dashboard_page():
         st.write("No google_credentials in session")
     
     st.write("---")
-    # END DEBUG SECTION
     
     if not st.session_state.parsed_events:
         st.warning("⚠️ No calendar data available!")
