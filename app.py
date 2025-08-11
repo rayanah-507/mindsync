@@ -184,7 +184,11 @@ def show_calendar_provider_selection():
         
         # Google Calendar option
         if st.button("📅 Google Calendar", use_container_width=True, help="Connect with Google Calendar"):
+            # Set the provider and load data
+            st.session_state.calendar_provider = "google"
             load_calendar_data("google")
+            # Force rerun to show main app
+            st.rerun()
         
         st.markdown("<br>", unsafe_allow_html=True)
         
@@ -205,21 +209,15 @@ def load_calendar_data(provider):
     """Load calendar data based on provider"""
     if provider == "google":
         try:
-            # Try to import and use Google Calendar API
             from src.google_calendar_api import GoogleCalendarAPI
-            
-            # Check if returning from OAuth
-            query_params = st.query_params
-            
-            if 'code' in query_params:
-                handle_oauth_callback()
-                return
             
             # Initialize Google Calendar API
             google_cal = GoogleCalendarAPI()
             
             # Check if already authenticated
             if google_cal.is_authenticated():
+                st.info("✅ Already authenticated! Loading your calendar events...")
+                
                 # Fetch events directly
                 events = google_cal.get_calendar_events()
                 if events:
@@ -230,15 +228,15 @@ def load_calendar_data(provider):
                     parser = CalendarParser()
                     parsed_events = parser.parse_google_calendar_events(events)
                     st.session_state.parsed_events = parsed_events
-                    st.session_state.calendar_provider = "google"
                     
                     st.success(f"✅ Successfully loaded {len(events)} events from Google Calendar!")
-                    st.rerun()
+                    # Don't call st.rerun() here, let the main flow handle it
+                    return
                 else:
                     st.error("❌ Failed to fetch calendar events")
-                    st.stop()
+                    return
             else:
-                # Generate auth URL
+                # Not authenticated - show auth URL
                 auth_url = google_cal.get_auth_url()
                 if auth_url:
                     st.info("🔄 Click the link below to connect your Google Calendar:")
@@ -249,26 +247,11 @@ def load_calendar_data(provider):
                     st.error("❌ Failed to generate authentication URL")
                     st.stop()
                     
-        except ImportError:
-            # Fallback to sample data if Google Calendar API not available
-            st.warning("⚠️ Google Calendar API not available. Loading sample data...")
-            with open("data/sample_calendars/google_sample.json", 'r') as f:
-                calendar_data = json.load(f)
-            
-            st.session_state.calendar_data = calendar_data
-            parser = CalendarParser()
-            events = parser.parse_calendar(calendar_data)
-            st.session_state.parsed_events = events
-            st.session_state.calendar_provider = "google"
-            
-            st.success(f"✅ Loaded sample Google Calendar data with {len(events)} events!")
-            st.rerun()
-            
         except Exception as e:
             st.error(f"❌ Error setting up Google Calendar: {str(e)}")
+            # Fallback to sample data
             st.info("Loading sample data as fallback...")
             
-            # Fallback to sample data
             try:
                 with open("data/sample_calendars/google_sample.json", 'r') as f:
                     calendar_data = json.load(f)
@@ -280,13 +263,12 @@ def load_calendar_data(provider):
             parser = CalendarParser()
             events = parser.parse_calendar(calendar_data)
             st.session_state.parsed_events = events
-            st.session_state.calendar_provider = "google"
             
             st.success(f"✅ Loaded sample data with {len(events)} events!")
-            st.rerun()
+            return
             
     elif provider == "outlook":
-        # Outlook logic (sample data)
+        # Outlook logic stays the same
         try:
             sample_file = "data/sample_calendars/outlook_sample.json"
             try:
@@ -297,8 +279,6 @@ def load_calendar_data(provider):
                     calendar_data = json.load(f)
             
             st.session_state.calendar_data = calendar_data
-            
-            # Parse calendar events
             parser = CalendarParser()
             events = parser.parse_calendar(calendar_data)
             st.session_state.parsed_events = events
@@ -332,6 +312,23 @@ def show_main_app():
     # Sidebar navigation
     st.sidebar.title(f"👤 {st.session_state.username}")
     st.sidebar.markdown(f"📅 **Provider:** {st.session_state.calendar_provider.title()}")
+    
+    # Add Google Calendar status
+    if st.session_state.calendar_provider == "google":
+        try:
+            from src.google_calendar_api import GoogleCalendarAPI
+            google_cal = GoogleCalendarAPI()
+            if google_cal.is_authenticated():
+                st.sidebar.markdown("✅ **Google Calendar Connected**")
+                if st.sidebar.button("🔌 Disconnect Google Calendar"):
+                    google_cal.logout()
+                    st.session_state.calendar_provider = None
+                    st.session_state.calendar_data = None
+                    st.session_state.parsed_events = []
+                    st.rerun()
+        except:
+            pass
+    
     st.sidebar.markdown("---")
     
     page = st.sidebar.selectbox("Navigate to:", [
@@ -424,6 +421,32 @@ def dashboard_page():
 def calendar_data_page():
     """Calendar data management page"""
     st.header("📅 Calendar Data Management")
+    
+    # Display current connection status
+    if st.session_state.calendar_provider == "google":
+        try:
+            from src.google_calendar_api import GoogleCalendarAPI
+            google_cal = GoogleCalendarAPI()
+            if google_cal.is_authenticated():
+                st.success("✅ Connected to Google Calendar")
+                
+                # Refresh data option
+                if st.button("🔄 Refresh Calendar Data"):
+                    events = google_cal.get_calendar_events()
+                    if events:
+                        calendar_data = {"events": events}
+                        st.session_state.calendar_data = calendar_data
+                        
+                        parser = CalendarParser()
+                        parsed_events = parser.parse_google_calendar_events(events)
+                        st.session_state.parsed_events = parsed_events
+                        
+                        st.success(f"✅ Refreshed! Loaded {len(events)} events.")
+                        st.rerun()
+            else:
+                st.warning("⚠️ Google Calendar not connected")
+        except:
+            pass
     
     # Option to load different sample data
     st.subheader("📄 Load Sample Data")
