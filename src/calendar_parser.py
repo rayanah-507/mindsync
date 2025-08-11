@@ -32,6 +32,45 @@ class CalendarParser:
         else:
             raise ValueError(f"Unsupported calendar format detected")
     
+    def parse_google_calendar_events(self, events: List[Dict[str, Any]]) -> List[CalendarEvent]:
+        """Parse Google Calendar events list directly (for API integration)"""
+        parsed_events = []
+        
+        for event_data in events:
+            try:
+                # Parse start and end times
+                start_time = datetime.fromisoformat(event_data['start_time'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(event_data['end_time'].replace('Z', '+00:00'))
+                
+                # Create CalendarEvent object
+                event = CalendarEvent(
+                    id=event_data.get('id', str(hash(event_data.get('title', '') + str(start_time)))),
+                    title=event_data['title'],
+                    start_time=start_time,
+                    end_time=end_time,
+                    event_type=event_data['event_type'],
+                    description=event_data.get('description', ''),
+                    location=event_data.get('location', ''),
+                    participants=event_data['participants'],
+                    attendees=[],  # Will be populated from attendees count
+                    organizer='',
+                    is_all_day=False,
+                    is_online_meeting=False,
+                    importance='normal',
+                    status='confirmed',
+                    recurring=False,
+                    reminder_minutes=15,
+                    categories=[]
+                )
+                
+                parsed_events.append(event)
+                
+            except Exception as e:
+                print(f"Error parsing event {event_data.get('title', 'Unknown')}: {str(e)}")
+                continue
+        
+        return parsed_events
+    
     def _detect_format(self, calendar_data: Dict[str, Any]) -> str:
         """
         Auto-detect calendar format based on structure
