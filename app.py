@@ -44,43 +44,57 @@ def handle_oauth_callback():
     """Handle OAuth callback from Google"""
     query_params = st.query_params
     
-    if 'code' in query_params and 'state' in query_params:
+    if 'code' in query_params:
         auth_code = query_params['code']
-        state = query_params['state']
+        
+        st.info("🔄 Processing Google Calendar authentication...")
         
         try:
             from src.google_calendar_api import GoogleCalendarAPI
             google_cal = GoogleCalendarAPI()
             
             # Exchange code for token
-            if google_cal.exchange_code_for_token(auth_code, state):
-                # Fetch calendar events
+            if google_cal.exchange_code_for_token(auth_code):
+                st.success("✅ Authentication successful!")
+                
+                # Fetch calendar events immediately
                 events = google_cal.get_calendar_events()
-                if events:
-                    # Convert to our calendar format
+                
+                if events and len(events) > 0:
+                    # Store everything in session state
                     calendar_data = {"events": events}
                     st.session_state.calendar_data = calendar_data
                     
-                    # Parse events using existing parser
+                    # Parse events
                     parser = CalendarParser()
                     parsed_events = parser.parse_google_calendar_events(events)
                     st.session_state.parsed_events = parsed_events
-                    
-                    # SET THESE IMPORTANT SESSION VARIABLES
                     st.session_state.calendar_provider = "google"
-                    st.session_state.authenticated = True
-                    st.session_state.username = "demo_user"  # Keep user logged in
                     
-                    # Clear query params and rerun
+                    st.success(f"✅ Loaded {len(events)} events from Google Calendar!")
+                    
+                    # Clear query params
                     st.query_params.clear()
-                    st.success("✅ Successfully connected to Google Calendar!")
+                    
+                    # Small delay then redirect
+                    import time
+                    time.sleep(2)
                     st.rerun()
+                    
                 else:
-                    st.error("❌ Failed to fetch calendar events")
+                    st.warning("⚠️ No events found in your Google Calendar")
+                    # Still set up with empty events
+                    st.session_state.calendar_data = {"events": []}
+                    st.session_state.parsed_events = []
+                    st.session_state.calendar_provider = "google"
+                    
+                    st.query_params.clear()
+                    st.rerun()
             else:
                 st.error("❌ Failed to authenticate with Google Calendar")
+                
         except Exception as e:
-            st.error(f"❌ Error in OAuth callback: {str(e)}")
+            st.error(f"❌ Authentication error: {str(e)}")
 
 def main():
     # Handle OAuth callback first
