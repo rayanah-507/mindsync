@@ -54,8 +54,6 @@ def handle_oauth_callback():
             
             # Exchange code for token
             if google_cal.exchange_code_for_token(auth_code, state):
-                st.success("✅ Successfully connected to Google Calendar!")
-                
                 # Fetch calendar events
                 events = google_cal.get_calendar_events()
                 if events:
@@ -68,10 +66,14 @@ def handle_oauth_callback():
                     parsed_events = parser.parse_google_calendar_events(events)
                     st.session_state.parsed_events = parsed_events
                     
+                    # SET THESE IMPORTANT SESSION VARIABLES
                     st.session_state.calendar_provider = "google"
+                    st.session_state.authenticated = True
+                    st.session_state.username = "demo_user"  # Keep user logged in
                     
                     # Clear query params and rerun
                     st.query_params.clear()
+                    st.success("✅ Successfully connected to Google Calendar!")
                     st.rerun()
                 else:
                     st.error("❌ Failed to fetch calendar events")
