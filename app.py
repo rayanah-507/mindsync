@@ -360,6 +360,21 @@ def show_main_app():
 def dashboard_page():
     """Main dashboard with overview"""
     st.header("📊 Dashboard Overview")
+
+
+        # ADD THIS DEBUGGING SECTION
+    st.write("🔍 DEBUG INFO:")
+    st.write(f"parsed_events in session: {len(st.session_state.parsed_events) if st.session_state.parsed_events else 'None'}")
+    st.write(f"calendar_data in session: {st.session_state.calendar_data}")
+    st.write(f"calendar_provider: {st.session_state.calendar_provider}")
+    
+    if 'google_credentials' in st.session_state:
+        st.write(f"google_credentials: {st.session_state.google_credentials}")
+    else:
+        st.write("No google_credentials in session")
+    
+    st.write("---")
+    # END DEBUG SECTION
     
     if not st.session_state.parsed_events:
         st.warning("⚠️ No calendar data available!")
