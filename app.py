@@ -393,8 +393,7 @@ def show_main_app():
         stress_analysis_page()
     elif page == "💡 Suggestions & Schedule":
         suggestions_page()
-    elif page == "📈 Analytics":
-        analytics_page()
+
 
 def dashboard_page():
     """Main dashboard with overview"""
@@ -1115,15 +1114,6 @@ def suggestions_page():
             st.warning("**Elevated Stress:** Prioritize ruthlessly, take breaks")
         else:
             st.error("**High Stress:** Cancel non-essentials, delegate, take recovery time")
-
-def analytics_page():
-    st.header("📈 Analytics")
-    
-    if not st.session_state.parsed_events:
-        st.warning("⚠️ Please load calendar data first!")
-        return
-    
-    st.info("🚧 Analytics dashboard will be implemented in Week 3-4")
 
 if __name__ == "__main__":
     main()
