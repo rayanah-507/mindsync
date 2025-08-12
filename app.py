@@ -367,8 +367,7 @@ def show_main_app():
         "📊 Dashboard",
         "📅 Calendar Data",
         "🔍 Stress Analysis", 
-        "💡 Suggestions & Schedule",
-        "📈 Analytics"
+        "💡 Suggestions & Schedule"
     ])
     
     # Sidebar actions
