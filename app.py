@@ -571,7 +571,9 @@ def display_calendar_preview(events):
             'End': event.end_time.strftime('%Y-%m-%d %H:%M'),
             'Duration (min)': event.duration_minutes,
             'Type': event.event_type,
-            'Participants': event.participants
+            'Participants': event.participants,
+            'Location': event.location if event.location else '',  
+            'Description': event.description if event.description else '' 
         })
     
     df = pd.DataFrame(event_data)
