@@ -45,11 +45,10 @@ class SuggestionEngine:
                 'summary': "No meetings scheduled."
             }
         
-        # REMOVED the hardcoded today filter - now works with whatever events are passed
         # Sort events by time
         events_sorted = sorted(events, key=lambda x: x.start_time)
         
-        # Find break opportunities
+        # Find break opportunities - FIXED LOGIC
         break_suggestions = self._find_break_opportunities(events_sorted, stress_analysis)
         
         # Generate optimization tips
@@ -66,35 +65,134 @@ class SuggestionEngine:
         }
     
     def _find_break_opportunities(self, events_sorted: List[Any], stress_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Find optimal break insertion points."""
+        """Find optimal break insertion points - COMPLETELY REWRITTEN."""
         suggestions = []
         
-        if len(events_sorted) < 2:
+        if not events_sorted:
             return suggestions
         
-        for i in range(len(events_sorted) - 1):
-            current_meeting = events_sorted[i]
-            next_meeting = events_sorted[i + 1]
+        # Get the date we're working with
+        target_date = events_sorted[0].start_time.date()
+        
+        # CASE 1: Single meeting - suggest breaks before and after
+        if len(events_sorted) == 1:
+            meeting = events_sorted[0]
             
-            # Calculate gap
-            gap_minutes = (next_meeting.start_time - current_meeting.end_time).total_seconds() / 60
-            
-            if 5 <= gap_minutes <= 60:  # Usable break time
-                # Determine break priority and type
-                priority, break_type, activity = self._recommend_break_activity(
-                    current_meeting, next_meeting, gap_minutes, stress_analysis
-                )
-                
+            # Break before meeting (if meeting is after 9 AM)
+            if meeting.start_time.hour >= 10:
                 suggestions.append({
-                    'time': current_meeting.end_time.strftime('%H:%M'),
-                    'duration': int(min(gap_minutes - 2, 15)),  # Leave 2 min buffer
-                    'priority': priority,
-                    'type': break_type,
-                    'activity': activity,
-                    'reason': self._get_break_reason(current_meeting, next_meeting, gap_minutes)
+                    'time': (meeting.start_time - timedelta(minutes=30)).strftime('%H:%M'),
+                    'duration': 10,
+                    'priority': 3,
+                    'type': 'preparation',
+                    'activity': 'Meeting preparation and mindfulness',
+                    'reason': 'Prepare mentally for upcoming meeting'
+                })
+            
+            # Break after meeting (if meeting ends before 6 PM)
+            if meeting.end_time.hour < 18:
+                suggestions.append({
+                    'time': meeting.end_time.strftime('%H:%M'),
+                    'duration': 15,
+                    'priority': 4,
+                    'type': 'recovery',
+                    'activity': 'Post-meeting decompression walk',
+                    'reason': 'Recovery time after meeting'
                 })
         
-        # Sort by priority
+        # CASE 2: Multiple meetings - find gaps between them AND before/after
+        else:
+            # Break before first meeting (if it starts after 9 AM)
+            first_meeting = events_sorted[0]
+            if first_meeting.start_time.hour >= 10:
+                suggestions.append({
+                    'time': (first_meeting.start_time - timedelta(minutes=15)).strftime('%H:%M'),
+                    'duration': 10,
+                    'priority': 3,
+                    'type': 'preparation',
+                    'activity': 'Morning preparation and focus setting',
+                    'reason': 'Prepare for the day ahead'
+                })
+            
+            # Breaks between consecutive meetings
+            for i in range(len(events_sorted) - 1):
+                current_meeting = events_sorted[i]
+                next_meeting = events_sorted[i + 1]
+                
+                # Calculate gap
+                gap_minutes = (next_meeting.start_time - current_meeting.end_time).total_seconds() / 60
+                
+                # RELAXED CONDITIONS - any gap >= 2 minutes can have a break
+                if gap_minutes >= 2:
+                    # Determine break duration and priority
+                    if gap_minutes >= 15:
+                        duration = 10
+                        priority = 4
+                        break_type = 'movement'
+                        activity = 'Walk and stretch'
+                    elif gap_minutes >= 10:
+                        duration = 5
+                        priority = 3
+                        break_type = 'recovery'
+                        activity = 'Quick hydration break'
+                    elif gap_minutes >= 5:
+                        duration = 3
+                        priority = 3
+                        break_type = 'mindfulness'
+                        activity = 'Deep breathing'
+                    else:  # 2-5 minutes
+                        duration = 2
+                        priority = 2
+                        break_type = 'mindfulness'
+                        activity = 'Quick mental reset'
+                    
+                    # Get actual activity
+                    activity = self._get_safe_activity(break_type, duration)
+                    
+                    suggestions.append({
+                        'time': current_meeting.end_time.strftime('%H:%M'),
+                        'duration': duration,
+                        'priority': priority,
+                        'type': break_type,
+                        'activity': activity,
+                        'reason': self._get_break_reason(current_meeting, next_meeting, gap_minutes)
+                    })
+            
+            # Break after last meeting (if it ends before 6 PM)
+            last_meeting = events_sorted[-1]
+            if last_meeting.end_time.hour < 18:
+                suggestions.append({
+                    'time': last_meeting.end_time.strftime('%H:%M'),
+                    'duration': 15,
+                    'priority': 4,
+                    'type': 'recovery',
+                    'activity': 'End-of-meetings decompression',
+                    'reason': 'Transition back to focused work'
+                })
+        
+        # CASE 3: Heavy meeting days - add extra recovery breaks
+        if len(events_sorted) >= 4:
+            # Find longest gap for an extended break
+            longest_gap = 0
+            longest_gap_time = None
+            
+            for i in range(len(events_sorted) - 1):
+                gap = (events_sorted[i + 1].start_time - events_sorted[i].end_time).total_seconds() / 60
+                if gap > longest_gap:
+                    longest_gap = gap
+                    longest_gap_time = events_sorted[i].end_time
+            
+            if longest_gap >= 30 and longest_gap_time:
+                suggestions.append({
+                    'time': longest_gap_time.strftime('%H:%M'),
+                    'duration': 20,
+                    'priority': 5,
+                    'type': 'recovery',
+                    'activity': 'Extended recovery break - walk outside',
+                    'reason': 'Heavy meeting day - extended recovery needed'
+                })
+        
+        # Sort by priority (highest first)
         return sorted(suggestions, key=lambda x: x['priority'], reverse=True)
     
     def _recommend_break_activity(self, current_meeting: Any, next_meeting: Any, 
@@ -180,8 +278,10 @@ class SuggestionEngine:
     
     def _get_break_reason(self, current_meeting: Any, next_meeting: Any, gap_minutes: float) -> str:
         """Generate explanation for break suggestion."""
-        if gap_minutes <= 10:
-            return "Back-to-back meetings detected - mental reset needed"
+        if gap_minutes <= 5:
+            return "Short gap - quick mental reset"
+        elif gap_minutes <= 10:
+            return "Back-to-back meetings - mental reset needed"
         elif current_meeting.duration_minutes > 90:
             return "Long meeting completed - physical movement recommended"
         elif getattr(current_meeting, 'participants', 1) > 8:
@@ -241,6 +341,10 @@ class SuggestionEngine:
         meeting_count = len(events)
         if meeting_count >= 5:
             tips.append("📱 Use 'Do Not Disturb' between meetings to maintain focus")
+        elif meeting_count == 1:
+            tips.append("🎯 Single meeting day - perfect for deep work blocks")
+        elif meeting_count == 0:
+            tips.append("🌟 No meetings today. Great for focused work!")
         
         return tips[:5]  # Limit to top 5 tips
     
