@@ -868,7 +868,6 @@ def stress_analysis_page():
     st.markdown("---")
     st.caption("🧠 7-Day stress forecast with per-day analysis")
 
-
 def suggestions_page():
     """Smart suggestions and schedule optimization page with multi-day support."""
     st.header("💡 Suggestions & Schedule")
@@ -915,9 +914,22 @@ def suggestions_page():
                 selected_date = datetime.now().date() + timedelta(days=1)
                 st.rerun()
     
-    # Generate suggestions for selected date
+    # Generate suggestions for selected date using existing methods
     stress_analysis = calculator.calculate_daily_stress(st.session_state.parsed_events, selected_date)
-    suggestions = engine.generate_suggestions_for_date(st.session_state.parsed_events, stress_analysis, selected_date)
+    
+    # Filter events for selected date (manual filtering since original engine doesn't support date selection)
+    selected_date_events = [event for event in st.session_state.parsed_events if event.start_time.date() == selected_date]
+    
+    # Generate suggestions using existing method but with filtered events
+    if selected_date_events:
+        suggestions = engine.generate_suggestions(selected_date_events, stress_analysis)
+    else:
+        suggestions = {
+            'break_suggestions': [],
+            'optimization_tips': [f"No meetings scheduled for {selected_date.strftime('%A, %B %d')}. Great for focused work!"],
+            'daily_plan': [],
+            'summary': f"No meetings scheduled for {selected_date.strftime('%A, %B %d')}."
+        }
     
     stress_score = stress_analysis['daily_stress_score']
     
@@ -980,23 +992,47 @@ def suggestions_page():
     st.subheader("📊 7-Day Suggestions Overview")
     
     with st.spinner("🧠 Generating 7-day suggestions overview..."):
-        # Generate multi-day data
-        multi_day_data = engine.generate_multi_day_suggestions(st.session_state.parsed_events, days=7)
+        # Generate multi-day data using existing methods
+        multi_day_data = []
+        today = datetime.now().date()
+        
+        for i in range(7):
+            target_date = today + timedelta(days=i)
+            
+            # Calculate stress for this specific date
+            day_stress_analysis = calculator.calculate_daily_stress(st.session_state.parsed_events, target_date)
+            
+            # Filter events for this date
+            day_events = [event for event in st.session_state.parsed_events if event.start_time.date() == target_date]
+            
+            # Generate suggestions for this date
+            if day_events:
+                day_suggestions = engine.generate_suggestions(day_events, day_stress_analysis)
+            else:
+                day_suggestions = {
+                    'break_suggestions': [],
+                    'optimization_tips': [],
+                    'daily_plan': [],
+                    'summary': f"No meetings scheduled."
+                }
+            
+            multi_day_data.append({
+                'date': target_date,
+                'day_name': target_date.strftime('%A'),
+                'stress_analysis': day_stress_analysis,
+                'suggestions': day_suggestions
+            })
     
     # Create overview table
     overview_data = []
-    for date_str, day_data in multi_day_data.items():
-        date_obj = day_data['date']
-        stress_analysis = day_data['stress_analysis']
-        suggestions = day_data['suggestions']
-        
+    for day_data in multi_day_data:
         overview_data.append({
-            'Date': date_obj.strftime('%m/%d'),
+            'Date': day_data['date'].strftime('%m/%d'),
             'Day': day_data['day_name'][:3],
-            'Stress Score': stress_analysis['daily_stress_score'],
-            'Breaks': len(suggestions['break_suggestions']),
-            'Tips': len(suggestions['optimization_tips']),
-            'Meetings': stress_analysis['meeting_analysis']['total_meetings']
+            'Stress Score': day_data['stress_analysis']['daily_stress_score'],
+            'Breaks': len(day_data['suggestions']['break_suggestions']),
+            'Tips': len(day_data['suggestions']['optimization_tips']),
+            'Meetings': day_data['stress_analysis']['meeting_analysis']['total_meetings']
         })
     
     # Display overview table
@@ -1007,7 +1043,7 @@ def suggestions_page():
     # Expandable sections for each day
     st.subheader("📋 Daily Breakdown")
     
-    for date_str, day_data in multi_day_data.items():
+    for day_data in multi_day_data:
         date_obj = day_data['date']
         stress_analysis = day_data['stress_analysis']
         suggestions = day_data['suggestions']
@@ -1086,7 +1122,7 @@ def suggestions_page():
     if st.button("📤 Export 7-Day Suggestions"):
         export_text = "MINDSYNC 7-DAY SUGGESTIONS OVERVIEW\n" + "="*40 + "\n\n"
         
-        for date_str, day_data in multi_day_data.items():
+        for day_data in multi_day_data:
             date_obj = day_data['date']
             stress_analysis = day_data['stress_analysis']
             suggestions = day_data['suggestions']
@@ -1114,7 +1150,6 @@ def suggestions_page():
             file_name=f"suggestions_overview_{datetime.now().strftime('%Y%m%d')}.txt",
             mime="text/plain"
         )
-
 
 
 if __name__ == "__main__":
