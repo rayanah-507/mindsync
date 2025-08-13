@@ -868,15 +868,16 @@ def stress_analysis_page():
     st.markdown("---")
     st.caption("🧠 7-Day stress forecast with per-day analysis")
 
+
 def suggestions_page():
-    """Smart suggestions and schedule optimization page."""
+    """Smart suggestions and schedule optimization page with multi-day support."""
     st.header("💡 Suggestions & Schedule")
     
     if not st.session_state.parsed_events:
         st.warning("⚠️ Please load calendar data first!")
         return
     
-    # Import and analyze
+    # Import and initialize
     try:
         from src.stress_predictor import MeetingStressCalculator
         from src.suggestion_engine import SuggestionEngine
@@ -884,13 +885,50 @@ def suggestions_page():
         calculator = MeetingStressCalculator()
         engine = SuggestionEngine()
         
-        stress_analysis = calculator.calculate_daily_stress(st.session_state.parsed_events)
-        suggestions = engine.generate_suggestions(st.session_state.parsed_events, stress_analysis)
     except ImportError as e:
         st.error(f"❌ Error: {str(e)}")
         return
     
+    # Date selection for viewing suggestions
+    st.subheader("📅 Select Date for Suggestions")
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        # Date picker for specific day
+        selected_date = st.date_input(
+            "Choose date:",
+            value=datetime.now().date(),
+            min_value=datetime.now().date(),
+            max_value=datetime.now().date() + timedelta(days=30)
+        )
+    
+    with col2:
+        # Quick date buttons
+        st.markdown("**Quick select:**")
+        col_today, col_tomorrow = st.columns(2)
+        with col_today:
+            if st.button("📅 Today"):
+                selected_date = datetime.now().date()
+                st.rerun()
+        with col_tomorrow:
+            if st.button("📅 Tomorrow"):
+                selected_date = datetime.now().date() + timedelta(days=1)
+                st.rerun()
+    
+    # Generate suggestions for selected date
+    stress_analysis = calculator.calculate_daily_stress(st.session_state.parsed_events, selected_date)
+    suggestions = engine.generate_suggestions_for_date(st.session_state.parsed_events, stress_analysis, selected_date)
+    
     stress_score = stress_analysis['daily_stress_score']
+    
+    # Display selected date info
+    date_str = selected_date.strftime('%A, %B %d, %Y')
+    if selected_date == datetime.now().date():
+        st.subheader(f"🎯 Today's Suggestions ({date_str})")
+    elif selected_date == datetime.now().date() + timedelta(days=1):
+        st.subheader(f"🌅 Tomorrow's Suggestions ({date_str})")
+    else:
+        st.subheader(f"📋 Suggestions for {date_str}")
     
     # Emergency alerts for high stress
     if stress_score >= 60:
@@ -899,7 +937,7 @@ def suggestions_page():
             st.error(f"🚨 {suggestion}")
         st.markdown("---")
     
-    # Summary metrics
+    # Summary metrics for selected date
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("🎯 Stress Score", f"{stress_score}/100")
@@ -908,7 +946,7 @@ def suggestions_page():
     with col3:
         st.metric("💡 Optimization Tips", len(suggestions['optimization_tips']))
     
-    # Top break suggestions
+    # Top break suggestions for selected date
     st.subheader("⏰ Recommended Breaks")
     break_suggestions = suggestions['break_suggestions'][:3]  # Top 3 only
     
@@ -922,13 +960,13 @@ def suggestions_page():
             with col2:
                 st.markdown(f"{priority_color} {break_rec['activity']} ({break_rec['duration']}min)")
             with col3:
-                if st.button(f"Add", key=f"add_{i}"):
+                if st.button(f"Add", key=f"add_{selected_date}_{i}"):
                     st.success("✅ Break noted!")
     else:
-        st.info("No break opportunities found.")
+        st.info("No break opportunities found for this date.")
     
-    # Optimization tips
-    st.subheader("⚡ Quick Tips")
+    # Optimization tips for selected date
+    st.subheader("⚡ Optimization Tips")
     for tip in suggestions['optimization_tips'][:3]:  # Top 3 only
         if tip.startswith(("🚨", "⚠️")):
             st.warning(tip)
@@ -937,7 +975,86 @@ def suggestions_page():
         else:
             st.info(tip)
     
-    # Quick actions
+    # Multi-day overview section
+    st.markdown("---")
+    st.subheader("📊 7-Day Suggestions Overview")
+    
+    with st.spinner("🧠 Generating 7-day suggestions overview..."):
+        # Generate multi-day data
+        multi_day_data = engine.generate_multi_day_suggestions(st.session_state.parsed_events, days=7)
+    
+    # Create overview table
+    overview_data = []
+    for date_str, day_data in multi_day_data.items():
+        date_obj = day_data['date']
+        stress_analysis = day_data['stress_analysis']
+        suggestions = day_data['suggestions']
+        
+        overview_data.append({
+            'Date': date_obj.strftime('%m/%d'),
+            'Day': day_data['day_name'][:3],
+            'Stress Score': stress_analysis['daily_stress_score'],
+            'Breaks': len(suggestions['break_suggestions']),
+            'Tips': len(suggestions['optimization_tips']),
+            'Meetings': stress_analysis['meeting_analysis']['total_meetings']
+        })
+    
+    # Display overview table
+    import pandas as pd
+    overview_df = pd.DataFrame(overview_data)
+    st.dataframe(overview_df, use_container_width=True)
+    
+    # Expandable sections for each day
+    st.subheader("📋 Daily Breakdown")
+    
+    for date_str, day_data in multi_day_data.items():
+        date_obj = day_data['date']
+        stress_analysis = day_data['stress_analysis']
+        suggestions = day_data['suggestions']
+        
+        # Determine day label
+        if date_obj == datetime.now().date():
+            day_label = f"Today - {day_data['day_name']} ({date_obj.strftime('%m/%d')})"
+        elif date_obj == datetime.now().date() + timedelta(days=1):
+            day_label = f"Tomorrow - {day_data['day_name']} ({date_obj.strftime('%m/%d')})"
+        else:
+            day_label = f"{day_data['day_name']} ({date_obj.strftime('%m/%d')})"
+        
+        # Color code based on stress level
+        stress_score = stress_analysis['daily_stress_score']
+        if stress_score > 60:
+            icon = "🔥"
+        elif stress_score > 30:
+            icon = "⚠️"
+        else:
+            icon = "✅"
+        
+        with st.expander(f"{icon} {day_label} - Stress: {stress_score}/100"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Break Suggestions:**")
+                if suggestions['break_suggestions']:
+                    for break_rec in suggestions['break_suggestions'][:3]:
+                        priority_color = "🔴" if break_rec['priority'] >= 4 else "🟡" if break_rec['priority'] >= 3 else "🟢"
+                        st.markdown(f"• {break_rec['time']} - {priority_color} {break_rec['activity']} ({break_rec['duration']}min)")
+                else:
+                    st.markdown("• No break opportunities")
+            
+            with col2:
+                st.markdown("**Optimization Tips:**")
+                if suggestions['optimization_tips']:
+                    for tip in suggestions['optimization_tips'][:3]:
+                        st.markdown(f"• {tip}")
+                else:
+                    st.markdown("• No specific tips needed")
+            
+            # Quick stats for this day
+            st.markdown(f"**Meeting Stats:** {stress_analysis['meeting_analysis']['total_meetings']} meetings, "
+                       f"{stress_analysis['meeting_analysis']['total_hours']} hours")
+    
+    # Quick actions (still for selected date)
+    st.markdown("---")
     st.subheader("🚀 Quick Actions")
     col1, col2, col3 = st.columns(3)
     
@@ -953,7 +1070,7 @@ def suggestions_page():
         if st.button("📱 Focus Mode", use_container_width=True):
             st.info("📱 Enable Do Not Disturb")
     
-    # Stress-specific advice
+    # Stress-specific advice for selected date
     with st.expander("🎯 Stress-Level Advice"):
         if stress_score <= 20:
             st.success("**Low Stress:** Use this energy for creative work!")
@@ -963,6 +1080,42 @@ def suggestions_page():
             st.warning("**Elevated Stress:** Prioritize ruthlessly, take breaks")
         else:
             st.error("**High Stress:** Cancel non-essentials, delegate, take recovery time")
+    
+    # Export functionality
+    st.markdown("---")
+    if st.button("📤 Export 7-Day Suggestions"):
+        export_text = "MINDSYNC 7-DAY SUGGESTIONS OVERVIEW\n" + "="*40 + "\n\n"
+        
+        for date_str, day_data in multi_day_data.items():
+            date_obj = day_data['date']
+            stress_analysis = day_data['stress_analysis']
+            suggestions = day_data['suggestions']
+            
+            export_text += f"{day_data['day_name']}, {date_obj.strftime('%B %d')}\n"
+            export_text += f"Stress Score: {stress_analysis['daily_stress_score']}/100\n"
+            export_text += f"Meetings: {stress_analysis['meeting_analysis']['total_meetings']}\n"
+            export_text += f"Break Opportunities: {len(suggestions['break_suggestions'])}\n"
+            
+            if suggestions['break_suggestions']:
+                export_text += "Top Breaks:\n"
+                for break_rec in suggestions['break_suggestions'][:3]:
+                    export_text += f"  • {break_rec['time']} - {break_rec['activity']} ({break_rec['duration']}min)\n"
+            
+            if suggestions['optimization_tips']:
+                export_text += "Top Tips:\n"
+                for tip in suggestions['optimization_tips'][:3]:
+                    export_text += f"  • {tip}\n"
+            
+            export_text += "\n" + "-"*30 + "\n\n"
+        
+        st.download_button(
+            label="⬇️ Download Suggestions",
+            data=export_text,
+            file_name=f"suggestions_overview_{datetime.now().strftime('%Y%m%d')}.txt",
+            mime="text/plain"
+        )
+
+
 
 if __name__ == "__main__":
     main()
