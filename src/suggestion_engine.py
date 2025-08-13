@@ -36,35 +36,24 @@ class SuggestionEngine:
         }
     
     def generate_suggestions(self, events: List[Any], stress_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate comprehensive wellbeing suggestions for today only."""
+        """Generate comprehensive wellbeing suggestions - FIXED to work with any date."""
         if not events:
             return {
                 'break_suggestions': [],
-                'optimization_tips': ["Great! No meetings today. Focus on deep work."],
+                'optimization_tips': ["Great! No meetings scheduled. Focus on deep work."],
                 'daily_plan': [],
-                'summary': "No meetings scheduled for today."
+                'summary': "No meetings scheduled."
             }
         
-        # Filter events for today only
-        today = datetime.now().date()
-        today_events = [event for event in events if event.start_time.date() == today]
-        
-        if not today_events:
-            return {
-                'break_suggestions': [],
-                'optimization_tips': ["No meetings today. Great for focused work!"],
-                'daily_plan': [],
-                'summary': "No meetings scheduled for today."
-            }
-        
+        # REMOVED the hardcoded today filter - now works with whatever events are passed
         # Sort events by time
-        events_sorted = sorted(today_events, key=lambda x: x.start_time)
+        events_sorted = sorted(events, key=lambda x: x.start_time)
         
         # Find break opportunities
         break_suggestions = self._find_break_opportunities(events_sorted, stress_analysis)
         
         # Generate optimization tips
-        optimization_tips = self._generate_optimization_tips(stress_analysis, today_events)
+        optimization_tips = self._generate_optimization_tips(stress_analysis, events)
         
         # Create daily wellbeing plan
         daily_plan = self._create_daily_plan(events_sorted, stress_analysis)
@@ -203,11 +192,11 @@ class SuggestionEngine:
         else:
             return "Opportunity for wellbeing break"
     
-    def _generate_optimization_tips(self, stress_analysis: Dict[str, Any], today_events: List[Any]) -> List[str]:
+    def _generate_optimization_tips(self, stress_analysis: Dict[str, Any], events: List[Any]) -> List[str]:
         """Generate schedule optimization recommendations."""
         tips = []
         
-        # Use today's stress analysis (not 7-day forecast)
+        # Use stress analysis (works with both single day and multi-day)
         if isinstance(stress_analysis, dict) and 'daily_stress_score' in stress_analysis:
             # Single day analysis
             components = stress_analysis.get('components', {})
@@ -249,7 +238,7 @@ class SuggestionEngine:
             tips.append("🌟 Great schedule! Use this energy for creative or strategic work")
         
         # Meeting count based tips
-        meeting_count = len(today_events)
+        meeting_count = len(events)
         if meeting_count >= 5:
             tips.append("📱 Use 'Do Not Disturb' between meetings to maintain focus")
         
@@ -298,9 +287,9 @@ class SuggestionEngine:
         high_priority_breaks = len([b for b in break_suggestions if b['priority'] >= 4])
         
         if total_breaks == 0:
-            return "No break opportunities found in today's schedule."
+            return "No break opportunities found in schedule."
         
-        summary = f"Found {total_breaks} break opportunities for today"
+        summary = f"Found {total_breaks} break opportunities"
         if high_priority_breaks > 0:
             summary += f" ({high_priority_breaks} high priority)"
         
