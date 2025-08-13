@@ -13,7 +13,8 @@ class SuggestionEngine:
             'mindfulness': {
                 2: ["Take 3 deep breaths", "Quick gratitude moment"],
                 5: ["5-minute meditation", "Mindful breathing", "Body scan"],
-                10: ["Guided meditation", "Mindfulness practice", "Stress visualization"]
+                10: ["Guided meditation", "Mindfulness practice", "Stress visualization"],
+                15: ["Extended meditation", "Progressive relaxation", "Mindful walking"]
             },
             'movement': {
                 3: ["Neck rolls", "Shoulder shrugs", "Ankle circles"],
@@ -24,7 +25,8 @@ class SuggestionEngine:
             'recovery': {
                 3: ["Hydrate", "Eye rest (20-20-20)", "Deep breath"],
                 5: ["Healthy snack", "Posture check", "Workspace tidy"],
-                10: ["Complete break", "Fresh air", "Mental reset"]
+                10: ["Complete break", "Fresh air", "Mental reset"],
+                15: ["Extended recovery", "Relaxation time", "Rest break"]
             },
             'mental': {
                 5: ["Review priorities", "Quick journaling", "Email triage"],
@@ -34,22 +36,35 @@ class SuggestionEngine:
         }
     
     def generate_suggestions(self, events: List[Any], stress_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate comprehensive wellbeing suggestions."""
+        """Generate comprehensive wellbeing suggestions for today only."""
         if not events:
             return {
                 'break_suggestions': [],
                 'optimization_tips': ["Great! No meetings today. Focus on deep work."],
-                'daily_plan': []
+                'daily_plan': [],
+                'summary': "No meetings scheduled for today."
+            }
+        
+        # Filter events for today only
+        today = datetime.now().date()
+        today_events = [event for event in events if event.start_time.date() == today]
+        
+        if not today_events:
+            return {
+                'break_suggestions': [],
+                'optimization_tips': ["No meetings today. Great for focused work!"],
+                'daily_plan': [],
+                'summary': "No meetings scheduled for today."
             }
         
         # Sort events by time
-        events_sorted = sorted(events, key=lambda x: x.start_time)
+        events_sorted = sorted(today_events, key=lambda x: x.start_time)
         
         # Find break opportunities
         break_suggestions = self._find_break_opportunities(events_sorted, stress_analysis)
         
         # Generate optimization tips
-        optimization_tips = self._generate_optimization_tips(stress_analysis)
+        optimization_tips = self._generate_optimization_tips(stress_analysis, today_events)
         
         # Create daily wellbeing plan
         daily_plan = self._create_daily_plan(events_sorted, stress_analysis)
@@ -64,6 +79,9 @@ class SuggestionEngine:
     def _find_break_opportunities(self, events_sorted: List[Any], stress_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Find optimal break insertion points."""
         suggestions = []
+        
+        if len(events_sorted) < 2:
+            return suggestions
         
         for i in range(len(events_sorted) - 1):
             current_meeting = events_sorted[i]
@@ -98,12 +116,14 @@ class SuggestionEngine:
         priority = 1
         
         # High stress meeting = higher priority break
-        if any(keyword in current_meeting.title.lower() for keyword in 
+        title_lower = getattr(current_meeting, 'title', '').lower()
+        if any(keyword in title_lower for keyword in 
                ['urgent', 'crisis', 'review', 'performance']):
             priority += 2
         
         # Many participants = mental fatigue
-        if getattr(current_meeting, 'participants', 1) > 5:
+        participants = getattr(current_meeting, 'participants', 1)
+        if participants > 5:
             priority += 1
         
         # Long meeting = physical fatigue
@@ -114,22 +134,60 @@ class SuggestionEngine:
         if gap_minutes <= 10:
             priority += 2
         
-        # Choose activity type based on context and available time
+        # Choose activity type and get safe duration
+        available_duration = max(3, min(15, int(gap_minutes - 2)))
+        
         if gap_minutes <= 5:
             break_type = 'mindfulness'
-            activity = random.choice(self.activities['mindfulness'][min(5, int(gap_minutes))])
+            safe_duration = self._get_safe_duration('mindfulness', available_duration)
         elif current_meeting.duration_minutes > 90:
             break_type = 'movement'
-            activity = random.choice(self.activities['movement'][min(15, int(gap_minutes))])
+            safe_duration = self._get_safe_duration('movement', available_duration)
         elif gap_minutes >= 10:
             break_type = random.choice(['movement', 'recovery'])
-            duration = min(15, int(gap_minutes))
-            activity = random.choice(self.activities[break_type][duration])
+            safe_duration = self._get_safe_duration(break_type, available_duration)
         else:
             break_type = 'recovery'
-            activity = random.choice(self.activities['recovery'][min(10, int(gap_minutes))])
+            safe_duration = self._get_safe_duration('recovery', available_duration)
+        
+        # Get activity safely
+        activity = self._get_safe_activity(break_type, safe_duration)
         
         return min(priority, 5), break_type, activity
+    
+    def _get_safe_duration(self, break_type: str, desired_duration: int) -> int:
+        """Get the closest available duration for an activity type."""
+        available_durations = sorted(self.activities[break_type].keys())
+        
+        # Find the closest duration that's <= desired_duration
+        suitable_duration = None
+        for duration in available_durations:
+            if duration <= desired_duration:
+                suitable_duration = duration
+            else:
+                break
+        
+        # If no suitable duration found, use the smallest one
+        if suitable_duration is None:
+            suitable_duration = available_durations[0]
+        
+        return suitable_duration
+    
+    def _get_safe_activity(self, break_type: str, duration: int) -> str:
+        """Safely get an activity for the given type and duration."""
+        try:
+            activities_list = self.activities[break_type][duration]
+            return random.choice(activities_list)
+        except KeyError:
+            # Fallback to any available activity for this type
+            all_activities = []
+            for dur_activities in self.activities[break_type].values():
+                all_activities.extend(dur_activities)
+            
+            if all_activities:
+                return random.choice(all_activities)
+            else:
+                return f"{break_type.title()} break"
     
     def _get_break_reason(self, current_meeting: Any, next_meeting: Any, gap_minutes: float) -> str:
         """Generate explanation for break suggestion."""
@@ -139,36 +197,47 @@ class SuggestionEngine:
             return "Long meeting completed - physical movement recommended"
         elif getattr(current_meeting, 'participants', 1) > 8:
             return "Large group meeting - recovery time beneficial"
-        elif any(keyword in current_meeting.title.lower() for keyword in ['review', 'performance']):
+        elif any(keyword in getattr(current_meeting, 'title', '').lower() 
+                for keyword in ['review', 'performance']):
             return "High-stress meeting - stress relief recommended"
         else:
             return "Opportunity for wellbeing break"
     
-    def _generate_optimization_tips(self, stress_analysis: Dict[str, Any]) -> List[str]:
+    def _generate_optimization_tips(self, stress_analysis: Dict[str, Any], today_events: List[Any]) -> List[str]:
         """Generate schedule optimization recommendations."""
         tips = []
-        components = stress_analysis.get('components', {})
-        stress_score = stress_analysis.get('daily_stress_score', 0)
+        
+        # Use today's stress analysis (not 7-day forecast)
+        if isinstance(stress_analysis, dict) and 'daily_stress_score' in stress_analysis:
+            # Single day analysis
+            components = stress_analysis.get('components', {})
+            stress_score = stress_analysis.get('daily_stress_score', 0)
+        else:
+            # Fallback for unexpected format
+            stress_score = 0
+            components = {}
         
         # Back-to-back meeting tips
         if components.get('back_to_back_penalty', 0) > 20:
             tips.append("🔄 Consider adding 15-minute buffers between consecutive meetings")
         
-        # Recovery deficit tips
-        if components.get('recovery_deficit', 0) > 15:
-            tips.append("😴 Schedule longer breaks after complex meetings")
+        # Lunch disruption tips
+        if components.get('lunch_disruption_penalty', 0) > 0:
+            tips.append("🍽️ Protect your lunch hour - avoid scheduling meetings 1-2 PM")
         
-        # Lunch meeting tips
-        meeting_analysis = stress_analysis.get('meeting_analysis', {})
-        if meeting_analysis.get('lunch_meetings', 0) > 0:
-            tips.append("🍽️ Protect your lunch hour - consider rescheduling non-critical lunch meetings")
+        # Overload tips
+        if components.get('overload_penalty', 0) > 0:
+            tips.append("⚡ Meeting overload detected - consider rescheduling non-critical meetings")
+        
+        # Long meeting tips
+        if components.get('long_meeting_penalty', 0) > 0:
+            tips.append("⏰ Break long meetings into shorter sessions with breaks")
         
         # High stress day tips
         if stress_score > 60:
             tips.extend([
-                "⚡ Prepare meeting agendas in advance to reduce in-meeting stress",
-                "💧 Set hydration reminders throughout the day",
-                "📱 Use 'Do Not Disturb' between meetings to focus"
+                "📋 Prepare meeting agendas in advance to reduce stress",
+                "💧 Set hydration reminders throughout the day"
             ])
         
         # General wellness tips
@@ -176,8 +245,13 @@ class SuggestionEngine:
             tips.append("🧘 Consider starting the day with 5 minutes of mindfulness")
         
         # If low stress
-        if stress_score <= 20:
+        if stress_score <= 25:
             tips.append("🌟 Great schedule! Use this energy for creative or strategic work")
+        
+        # Meeting count based tips
+        meeting_count = len(today_events)
+        if meeting_count >= 5:
+            tips.append("📱 Use 'Do Not Disturb' between meetings to maintain focus")
         
         return tips[:5]  # Limit to top 5 tips
     
@@ -224,9 +298,9 @@ class SuggestionEngine:
         high_priority_breaks = len([b for b in break_suggestions if b['priority'] >= 4])
         
         if total_breaks == 0:
-            return "No break opportunities found. Consider optimizing your schedule."
+            return "No break opportunities found in today's schedule."
         
-        summary = f"Found {total_breaks} break opportunities"
+        summary = f"Found {total_breaks} break opportunities for today"
         if high_priority_breaks > 0:
             summary += f" ({high_priority_breaks} high priority)"
         
@@ -234,20 +308,17 @@ class SuggestionEngine:
     
     def get_emergency_suggestions(self, stress_score: float) -> List[str]:
         """Get emergency stress relief suggestions for critical stress levels."""
-        if stress_score >= 80:
+        if stress_score >= 75:
             return [
                 "🚨 IMMEDIATE: Take 10 deep breaths right now",
                 "🚨 Cancel or reschedule non-critical meetings",
-                "🚨 Block 15-minute recovery breaks in your calendar",
-                "🚨 Speak with your manager about workload",
-                "🚨 Consider working from home if possible"
+                "🚨 Block 15-minute recovery breaks in your calendar"
             ]
-        elif stress_score >= 60:
+        elif stress_score >= 50:
             return [
                 "⚠️ Take a 5-minute break before your next meeting",
                 "⚠️ Prepare agendas to make meetings more efficient",
-                "⚠️ Decline lunch meetings to preserve energy",
-                "⚠️ Set boundaries on after-hours communications"
+                "⚠️ Consider declining optional meetings today"
             ]
         else:
             return []
